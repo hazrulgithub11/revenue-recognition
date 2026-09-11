@@ -186,15 +186,16 @@ info "rto_calculate_contract_fields: updated " + recordID + " r=" + r + " intere
 txModuleApiName = "cm_rto_transactions";
 
 // --- 1. Read start date ---
-// Prefer trigger context → fieldMap (parsed GET) → flat module_record
-startDateRaw = cm_rent_to_own_contract.get("cf_rto_start_date");
-if(startDateRaw == null || startDateRaw == "")
-{
-	startDateRaw = fieldMap.get("cf_rto_start_date");
-}
+// fieldMap and record are always Maps — .get(string) is safe on them.
+// Deluge has no typeof; avoid calling .get(string) on non-Map values.
+startDateRaw = fieldMap.get("cf_rto_start_date");
 if(startDateRaw == null || startDateRaw == "")
 {
 	startDateRaw = record.get("cf_rto_start_date");
+}
+if(startDateRaw == null || startDateRaw == "")
+{
+	startDateRaw = cm_rent_to_own_contract.get("cf_rto_start_date");
 }
 
 if(startDateRaw == null || startDateRaw == "")
@@ -204,7 +205,9 @@ if(startDateRaw == null || startDateRaw == "")
 }
 
 // --- 1b. Read customer ID ---
-// Lookup field value may arrive as a Map {"id":…} or a plain ID string.
+// module_fields.value for a lookup field is a plain entity ID string.
+// If the API ever returns a nested Map, its .toString() in Deluge looks like
+// {id=12345, name=...} — we detect this with contains("=") and parse it out.
 customerRaw = fieldMap.get("cf_customer");
 if(customerRaw == null || customerRaw == "")
 {
@@ -218,19 +221,24 @@ if(customerRaw == null || customerRaw == "")
 customerId = "";
 if(customerRaw != null && customerRaw != "")
 {
-	// Try common lookup-object keys; fall back to treating the whole value as the ID
-	customerIdMap = customerRaw.get("id");
-	if(customerIdMap == null || customerIdMap == "")
+	customerStr = customerRaw.toString();
+	// If it looks like a Map string representation, extract the ID value
+	if(customerStr.contains("id="))
 	{
-		customerIdMap = customerRaw.get("contact_id");
+		idPart = customerStr.getSuffix("id=");
+		trimmedId = idPart.getPrefix(",");
+		if(trimmedId == null || trimmedId == "")
+		{
+			trimmedId = idPart.getPrefix("}");
+		}
+		if(trimmedId != null && trimmedId != "")
+		{
+			customerId = trimmedId;
+		}
 	}
-	if(customerIdMap != null && customerIdMap != "")
+	if(customerId == "")
 	{
-		customerId = customerIdMap;
-	}
-	else
-	{
-		customerId = customerRaw.toString();
+		customerId = customerStr;
 	}
 }
 
@@ -258,45 +266,75 @@ if(allPeriods != null)
 {
 	for each pRec in allPeriods
 	{
-		// Filter to records belonging to this contract.
-		// cf_rto_contract_no is a field-based lookup; the GET response carries the
-		// contract's record ID in the lookup object (key "entity_id" or "id").
-		contractLookup = pRec.get("cf_rto_contract_no");
+		// pRec is always a Map from the LIST response — .get(string) is safe.
+		// For field *values* (lookup / dropdown) we use .toString() + string parsing;
+		// never call .get("key") on the value itself (may be a plain ID, not a Map).
+
 		contractRecId = "";
-		if(contractLookup != null)
+		contractLookupRaw = pRec.get("cf_rto_contract_no");
+		if(contractLookupRaw != null && contractLookupRaw != "")
 		{
-			cidFromMap = contractLookup.get("entity_id");
-			if(cidFromMap == null || cidFromMap == "")
+			contractStr = contractLookupRaw.toString();
+			// Detect Map toString like "{entity_id=XYZ,...}" or "{id=XYZ,...}"
+			if(contractStr.contains("entity_id="))
 			{
-				cidFromMap = contractLookup.get("id");
+				idPart = contractStr.getSuffix("entity_id=");
+				trimmedId = idPart.getPrefix(",");
+				if(trimmedId == null || trimmedId == "")
+				{
+					trimmedId = idPart.getPrefix("}");
+				}
+				if(trimmedId != null && trimmedId != "")
+				{
+					contractRecId = trimmedId;
+				}
 			}
-			if(cidFromMap != null && cidFromMap != "")
+			else if(contractStr.contains("id="))
 			{
-				contractRecId = cidFromMap;
+				idPart = contractStr.getSuffix("id=");
+				trimmedId = idPart.getPrefix(",");
+				if(trimmedId == null || trimmedId == "")
+				{
+					trimmedId = idPart.getPrefix("}");
+				}
+				if(trimmedId != null && trimmedId != "")
+				{
+					contractRecId = trimmedId;
+				}
 			}
 			else
 			{
-				contractRecId = contractLookup.toString();
+				// Plain ID string — use directly
+				contractRecId = contractStr;
 			}
 		}
 
-		if(contractRecId == recordID)
+		if(contractRecId == recordID.toString())
 		{
 			existingPeriods.add(pRec);
 
-			// Determine status name (dropdown value may be a Map or a plain string)
-			statusRaw = pRec.get("cf_status");
+			// Status: plain string ("Pending") or Map toString ("{name=Pending,...}")
 			statusName = "";
-			if(statusRaw != null)
+			statusRaw = pRec.get("cf_status");
+			if(statusRaw != null && statusRaw != "")
 			{
-				statusFromMap = statusRaw.get("name");
-				if(statusFromMap != null && statusFromMap != "")
+				statusStr = statusRaw.toString();
+				if(statusStr.contains("name="))
 				{
-					statusName = statusFromMap;
+					namePart = statusStr.getSuffix("name=");
+					trimmedName = namePart.getPrefix(",");
+					if(trimmedName == null || trimmedName == "")
+					{
+						trimmedName = namePart.getPrefix("}");
+					}
+					if(trimmedName != null && trimmedName != "")
+					{
+						statusName = trimmedName;
+					}
 				}
 				else
 				{
-					statusName = statusRaw.toString();
+					statusName = statusStr;
 				}
 			}
 
@@ -357,13 +395,15 @@ for each pRec in existingPeriods
 // Date: period-1 date = cf_rto_start_date; each subsequent = prior + 1 calendar month (EDATE).
 
 // Normalise start date to "yyyy-MM-dd" (strip timestamp if present)
+// Deluge has no split() — use getPrefix / toList
 startDateStr = startDateRaw.toString();
-if(startDateStr.contains("T"))
+datePrefix = startDateStr.getPrefix("T");
+if(datePrefix != null)
 {
-	startDateStr = startDateStr.split("T").get(0);
+	startDateStr = datePrefix;
 }
 
-sdParts = startDateStr.split("-");
+sdParts = startDateStr.toList("-");
 curYear = sdParts.get(0).toDecimal();
 curMonth = sdParts.get(1).toDecimal();
 curDay = sdParts.get(2).toDecimal();
