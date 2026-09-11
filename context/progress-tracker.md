@@ -1,6 +1,6 @@
 # Revenue Recognition — Progress Tracker
 
-**Last updated:** 2026-09-03 (Deluge `rto_calculate_contract_fields` written)  
+**Last updated:** 2026-09-11 (Phase 03 — Amortisation Period generation implemented)  
 
 **Org:** Megah Holdings Sdn Bhd — Zoho Books `organization_id=795380341`  
 **Primary module:** Rent To Own Contracts (`cm_rent_to_own_contract`)
@@ -13,8 +13,9 @@
 |-------|------|--------|
 | 01 — Understanding (Excel model) | [`feature-specs/01-rent-to-own-understanding/`](feature-specs/01-rent-to-own-understanding/overview.md) | Done |
 | 02 — MVP (contract field calcs) | [`feature-specs/02-rent-to-own-mvp/`](feature-specs/02-rent-to-own-mvp/overview.md) | In progress — Deluge written; workflow next |
-| 03 — Item / RI / payment wiring | — | Not started |
-| 04 — Schedule + journals | — | Not started |
+| 03 — Amortisation Period generation (RTO Transactions) | [`feature-specs/03-rto-transactions/`](feature-specs/03-rto-transactions/overview.md) | ✅ Implemented — acceptance tests pending manual run |
+| 04 — Item / RI / payment wiring | — | Not started |
+| 05 — Schedule + journals | — | Not started |
 
 ---
 
@@ -89,11 +90,38 @@ Detail lives in per-task files under [`02-rent-to-own-mvp/`](feature-specs/02-re
 
 ---
 
+---
+
+## Phase 03 — Amortisation Period generation (implemented 2026-09-11)
+
+| # | Task | Status | Spec |
+|---|------|--------|------|
+| 1 | Extend `rto_calculate_contract_fields` with Phase-2 period loop | ✅ Done | [`function/rto_calculate_contract_fields.ds`](function/rto_calculate_contract_fields.ds) |
+| 2 | Acceptance test SO25-0001 full schedule (36 rows, Excel 1:1) | ⬜ Pending manual run | [`03-rto-transactions/01-test-so25-0001-schedule.md`](feature-specs/03-rto-transactions/01-test-so25-0001-schedule.md) |
+| 3 | Acceptance test SO25-0006 full schedule | ⬜ Pending manual run | [`03-rto-transactions/02-test-so25-0006-schedule.md`](feature-specs/03-rto-transactions/02-test-so25-0006-schedule.md) |
+| 4 | Acceptance test regenerate + lock | ⬜ Pending manual run | [`03-rto-transactions/03-test-regenerate-lock.md`](feature-specs/03-rto-transactions/03-test-regenerate-lock.md) |
+
+### What Phase 03 added to the Deluge function
+
+After the contract RATE fields are PUT (Phase 1, existing), the function now:
+
+1. Reads `cf_rto_start_date` + `cf_customer` from the contract.
+2. Lists existing `cm_rto_transactions` records for this contract (`per_page=200`).
+3. **Lock check** — if any period is not Pending, logs "schedule locked" and returns.
+4. Deletes all existing Pending periods for this contract.
+5. Creates `n` new Amortisation Period rows via the Excel amort loop  
+   (`interest = opening × r`; `cash = PMT if opening > 1 else 0`; `principal = cash − interest`; `closing = opening − principal`; no last-line force-zero).
+6. Each row: `cf_status = Pending`, `cf_customer` copied from contract, `cf_rto_contract_no` → this contract's record ID, `cf_date` = start date + i months (EDATE).
+
+---
+
 ## Next actions
 
 1. ~~Fix the 3 field types~~ ✅
 2. ~~Decide Interest % storage~~ ✅ (`0.012810`)
 3. ~~Write Deluge `rto_calculate_contract_fields`~~ ✅ ([`function/rto_calculate_contract_fields.ds`](function/rto_calculate_contract_fields.ds))
-4. ~~Manual acceptance SO25-0001 + SO25-0006~~ ✅
-5. Wire workflow Created (+ Edited on calc inputs) — [04](feature-specs/02-rent-to-own-mvp/04-workflow.md).
-6. Optionally log Deluge quirks (connection scopes, `module_fields` parse, no `while`) — [07](feature-specs/02-rent-to-own-mvp/07-quirks.md).
+4. ~~Manual acceptance SO25-0001 + SO25-0006 (RATE)~~ ✅
+5. ~~Implement Amortisation Period generation~~ ✅ (Phase 03)
+6. **Run acceptance tests** — create a contract with SO25-0001 inputs in Zoho Books; verify 36 rows match Excel.
+7. Wire workflow Created (+ Edited on calc inputs) — [04](feature-specs/02-rent-to-own-mvp/04-workflow.md).
+8. Log Deluge quirks (connection scopes, `module_fields` parse, no `while`, lookup field POST format) — [07](feature-specs/02-rent-to-own-mvp/07-quirks.md).

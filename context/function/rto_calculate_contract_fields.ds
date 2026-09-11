@@ -162,11 +162,328 @@ putResponse = invokeurl
 	connection :"zbooks"
 ];
 
-if(putResponse.get("code") == 0)
-{
-	info "rto_calculate_contract_fields: updated " + recordID + " r=" + r + " interest_tot=" + interest_tot + " balance=" + balance;
-}
-else
+if(putResponse.get("code") != 0)
 {
 	info "rto_calculate_contract_fields: PUT failed — " + putResponse.get("message");
+	return;
 }
+
+info "rto_calculate_contract_fields: updated " + recordID + " r=" + r + " interest_tot=" + interest_tot + " balance=" + balance;
+
+// ============================================================
+// PHASE 2 — Generate Amortisation Periods (RTO Transactions)
+// Spec: context/feature-specs/03-rto-transactions/overview.md
+// Issue: github.com/hazrulgithub11/revenue-recognition/issues/1
+//
+// Flow (one atomic path, runs after RATE is committed):
+//   1. Read start date + customer from contract
+//   2. List existing periods for this contract
+//   3. Lock check — if any period is NOT Pending, skip regeneration
+//   4. Delete all existing Pending periods
+//   5. Create n new Amortisation Periods (Excel amort loop 1:1)
+// ============================================================
+
+txModuleApiName = "cm_rto_transactions";
+
+// --- 1. Read start date ---
+// Prefer trigger context → fieldMap (parsed GET) → flat module_record
+startDateRaw = cm_rent_to_own_contract.get("cf_rto_start_date");
+if(startDateRaw == null || startDateRaw == "")
+{
+	startDateRaw = fieldMap.get("cf_rto_start_date");
+}
+if(startDateRaw == null || startDateRaw == "")
+{
+	startDateRaw = record.get("cf_rto_start_date");
+}
+
+if(startDateRaw == null || startDateRaw == "")
+{
+	info "rto_calculate_contract_fields: skip period gen — cf_rto_start_date missing";
+	return;
+}
+
+// --- 1b. Read customer ID ---
+// Lookup field value may arrive as a Map {"id":…} or a plain ID string.
+customerRaw = fieldMap.get("cf_customer");
+if(customerRaw == null || customerRaw == "")
+{
+	customerRaw = record.get("cf_customer");
+}
+if(customerRaw == null || customerRaw == "")
+{
+	customerRaw = cm_rent_to_own_contract.get("cf_customer");
+}
+
+customerId = "";
+if(customerRaw != null && customerRaw != "")
+{
+	// Try common lookup-object keys; fall back to treating the whole value as the ID
+	customerIdMap = customerRaw.get("id");
+	if(customerIdMap == null || customerIdMap == "")
+	{
+		customerIdMap = customerRaw.get("contact_id");
+	}
+	if(customerIdMap != null && customerIdMap != "")
+	{
+		customerId = customerIdMap;
+	}
+	else
+	{
+		customerId = customerRaw.toString();
+	}
+}
+
+// --- 2. List existing Amortisation Periods for this contract ---
+// Use per_page=200; contracts have at most ~120 periods (10-year term).
+listUrl = domainUrl + "/" + txModuleApiName + "?organization_id=" + organizationID + "&per_page=200";
+listResp = invokeurl
+[
+	url :listUrl
+	type :GET
+	connection :"zbooks"
+];
+
+if(listResp.get("code") != 0)
+{
+	info "rto_calculate_contract_fields: LIST periods failed — " + listResp.get("message") + "; skipping period generation to avoid duplicates";
+	return;
+}
+
+existingPeriods = list();
+anyNotPending = false;
+
+allPeriods = listResp.get("module_records");
+if(allPeriods != null)
+{
+	for each pRec in allPeriods
+	{
+		// Filter to records belonging to this contract.
+		// cf_rto_contract_no is a field-based lookup; the GET response carries the
+		// contract's record ID in the lookup object (key "entity_id" or "id").
+		contractLookup = pRec.get("cf_rto_contract_no");
+		contractRecId = "";
+		if(contractLookup != null)
+		{
+			cidFromMap = contractLookup.get("entity_id");
+			if(cidFromMap == null || cidFromMap == "")
+			{
+				cidFromMap = contractLookup.get("id");
+			}
+			if(cidFromMap != null && cidFromMap != "")
+			{
+				contractRecId = cidFromMap;
+			}
+			else
+			{
+				contractRecId = contractLookup.toString();
+			}
+		}
+
+		if(contractRecId == recordID)
+		{
+			existingPeriods.add(pRec);
+
+			// Determine status name (dropdown value may be a Map or a plain string)
+			statusRaw = pRec.get("cf_status");
+			statusName = "";
+			if(statusRaw != null)
+			{
+				statusFromMap = statusRaw.get("name");
+				if(statusFromMap != null && statusFromMap != "")
+				{
+					statusName = statusFromMap;
+				}
+				else
+				{
+					statusName = statusRaw.toString();
+				}
+			}
+
+			if(statusName != "Pending")
+			{
+				anyNotPending = true;
+			}
+		}
+	}
+}
+
+// --- 3. Lock check ---
+// If any period is NOT Pending the schedule is frozen.
+// Decision: regenerate only when every existing period is still Pending.
+// Ref: learning-records/0003-regenerate-if-all-pending.md
+if(anyNotPending)
+{
+	info "rto_calculate_contract_fields: schedule locked — " + existingPeriods.size() + " period(s) exist for contract " + recordID + ", at least one is not Pending; regeneration blocked";
+	return;
+}
+
+// --- 4. Delete all existing Pending periods ---
+for each pRec in existingPeriods
+{
+	pRecId = pRec.get("module_record_id");
+	if(pRecId == null || pRecId == "")
+	{
+		pRecId = pRec.get("id");
+	}
+	if(pRecId != null && pRecId != "")
+	{
+		delResp = invokeurl
+		[
+			url :domainUrl + "/" + txModuleApiName + "/" + pRecId + "?organization_id=" + organizationID
+			type :DELETE
+			connection :"zbooks"
+		];
+		if(delResp.get("code") != 0)
+		{
+			info "rto_calculate_contract_fields: DELETE period " + pRecId + " failed — " + delResp.get("message");
+		}
+	}
+}
+
+// --- 5. Create n new Amortisation Periods (Excel amort loop 1:1) ---
+// Ref: learning-records/0005-excel-amort-no-plug.md
+// Ref: learning-records/0006-pmt-and-customer-copy.md
+// Ref: learning-records/0007-excel-1to1-and-lock-edits.md
+//
+// Loop variables:
+//   opening   — start of period receivable; period-1 seeded from cf_rto_principal_wip (RTO Principal WIP)
+//   interest  = round(opening × r, 2)
+//   cash      = PMT if opening > 1, else 0  (Excel cash guard)
+//   principal = round(cash − interest, 2)
+//   closing   = round(opening − principal, 2)
+//   next opening = max(0, closing)  — Excel ≤0 guard
+//
+// Date: period-1 date = cf_rto_start_date; each subsequent = prior + 1 calendar month (EDATE).
+
+// Normalise start date to "yyyy-MM-dd" (strip timestamp if present)
+startDateStr = startDateRaw.toString();
+if(startDateStr.contains("T"))
+{
+	startDateStr = startDateStr.split("T").get(0);
+}
+
+sdParts = startDateStr.split("-");
+curYear = sdParts.get(0).toDecimal();
+curMonth = sdParts.get(1).toDecimal();
+curDay = sdParts.get(2).toDecimal();
+
+opening = PV;
+
+// Dummy list of 200 items — break at index n (n validated > 0; contracts ≤ 120 months)
+periodDummy = "".leftPad(200).toList("");
+
+for each index idx in periodDummy
+{
+	if(idx >= n)
+	{
+		break;
+	}
+
+	// --- Excel amort formulas ---
+	interest = round(opening * r, 2);
+
+	cash = PMT;
+	if(opening <= 1)
+	{
+		cash = 0.0;
+	}
+
+	principal = round(cash - interest, 2);
+	closing = round(opening - principal, 2);
+
+	// --- Build period date string "yyyy-MM-dd" ---
+	// Using string concatenation ("" + number) to avoid Decimal.toString() trailing ".0"
+	if(curMonth < 10)
+	{
+		mStr = "0" + curMonth;
+	}
+	else
+	{
+		mStr = "" + curMonth;
+	}
+	if(curDay < 10)
+	{
+		dStr = "0" + curDay;
+	}
+	else
+	{
+		dStr = "" + curDay;
+	}
+	periodDateStr = "" + curYear + "-" + mStr + "-" + dStr;
+
+	// --- POST new Amortisation Period record ---
+	// cf_rto_contract_no: pass the contract record ID for the field-based lookup
+	// cf_status: "Pending" (Books form default is "Default" — must be set explicitly)
+	// cf_customer: copied from contract (learning-records/0006-pmt-and-customer-copy.md)
+	periodData = Map();
+	if(customerId != null && customerId != "")
+	{
+		periodData.put("cf_customer", customerId);
+	}
+	periodData.put("cf_rto_contract_no", recordID);
+	periodData.put("cf_date", periodDateStr);
+	periodData.put("cf_status", "Pending");
+	periodData.put("cf_principal_opening_balance", opening);
+	periodData.put("cf_payment_amount", cash);
+	periodData.put("cf_finance_income", interest);
+	periodData.put("cf_principal_reduction", principal);
+	periodData.put("cf_principal_closing_balance", closing);
+
+	periodBody = Map();
+	periodBody.put("JSONString", periodData);
+
+	createResp = invokeurl
+	[
+		url :domainUrl + "/" + txModuleApiName + "?organization_id=" + organizationID
+		type :POST
+		parameters :periodBody
+		connection :"zbooks"
+	];
+
+	if(createResp.get("code") != 0)
+	{
+		info "rto_calculate_contract_fields: CREATE period " + (idx + 1) + " (" + periodDateStr + ") failed — " + createResp.get("message");
+	}
+
+	// --- Advance to next period ---
+	// Next opening: closing clamped to 0 if ≤ 0 (Excel ≤0 guard; no last-line force-zero plug)
+	opening = closing;
+	if(opening < 0)
+	{
+		opening = 0.0;
+	}
+
+	// Next date: +1 calendar month (EDATE)
+	curMonth = curMonth + 1;
+	if(curMonth > 12)
+	{
+		curMonth = 1;
+		curYear = curYear + 1;
+	}
+
+	// Clamp day for shorter months (e.g. Jan-31 + 1 month → Feb-28/29)
+	daysInMonth = 31;
+	if(curMonth == 4 || curMonth == 6 || curMonth == 9 || curMonth == 11)
+	{
+		daysInMonth = 30;
+	}
+	else if(curMonth == 2)
+	{
+		// Gregorian leap-year rule
+		if(curYear % 4 == 0 && (curYear % 100 != 0 || curYear % 400 == 0))
+		{
+			daysInMonth = 29;
+		}
+		else
+		{
+			daysInMonth = 28;
+		}
+	}
+	if(curDay > daysInMonth)
+	{
+		curDay = daysInMonth;
+	}
+}
+
+info "rto_calculate_contract_fields: generated " + n + " Amortisation Period(s) for contract " + recordID;

@@ -13,4 +13,4 @@
 - Q12: Every period `cf_payment_amount` = contract monthly PMT.
 - Q13: Copy Customer from contract onto every period row.
 - Q14: Excel 1:1 — same formulas + cash guard; schedule must match Excel amounts.
-- Q15: If any period is not Pending → block edits to Period / Principal / Monthly Payment.
+- Setup complete: AGENTS.md + docs/agents (GitHub tracker, default triage labels, single-context domain).
