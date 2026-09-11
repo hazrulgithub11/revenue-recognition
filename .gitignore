@@ -1,0 +1,38 @@
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Editors / IDE
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+*.code-workspace
+
+# Secrets / local env (if you add any later)
+.env
+.env.*
+!.env.example
+*.pem
+credentials.json
+**/secrets/
+
+# Logs & temp
+*.log
+*.tmp
+*.temp
+.cache/
+
+# Optional local scratch (uncomment if you don't want agent scratch committed)
+# .scratch/
+
+# Python / tooling noise (if you add scripts later)
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Node (if you add tooling later)
+node_modules/

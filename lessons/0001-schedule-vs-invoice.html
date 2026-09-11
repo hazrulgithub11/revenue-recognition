@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>0001 — Schedule rows vs invoices</title>
+  <link rel="stylesheet" href="../assets/lesson.css" />
+</head>
+<body>
+  <article class="lesson">
+    <p class="eyebrow">Lesson 0001 · RTO billing design</p>
+    <h1>What real systems do: schedule ≠ invoice</h1>
+    <p class="lede">
+      For rent-to-own, you will create one Amortisation Period per month, then later raise a Books
+      Invoice from that period. That two-layer pattern is what loan/ERP systems do — not what pure
+      SaaS billing usually does.
+    </p>
+
+    <h2>The real-world pattern (loan / installment ERPs)</h2>
+    <p>
+      Loan and installment products (Odoo loan apps, ERPNext lending, SAP installment plans) almost
+      always keep <strong>three layers</strong>:
+    </p>
+    <ol>
+      <li><strong>Contract / loan master</strong> — term, principal, rate, customer.</li>
+      <li><strong>Installment / amortisation schedule</strong> — one child row per due period
+        (opening, interest, principal, closing, due date, status).</li>
+      <li><strong>Invoice (or receivable document)</strong> — created <em>from</em> a schedule row
+        when that period is billable; payment clears the invoice and flips the row to Paid.</li>
+    </ol>
+    <p class="cite">
+      See Odoo LoanSuite’s flow: compute installments on the loan, then generate installment invoices
+      (bulk or by scheduler), each tied back to the loan —
+      <a href="https://www.jupical.io/en/odoo-loan-management">jupical.io loan management</a>.
+      SAP treats an installment plan as a schedule of future receivables used for collection —
+      <a href="https://learning.sap.com/learning-journeys/implementing-sap-s-4hana-cloud-for-contract-accounting-invoicing/creating-an-installment-plan">SAP Learning</a>.
+    </p>
+
+    <div class="diagram">Contract (RTO)
+   │
+   ├── Amortisation Period × 36   ← your RTO Transactions
+   │      │
+   │      └── Invoice (when due)  ← Zoho Books Invoice
+   │             │
+   │             └── Payment received
+   │
+   └── (journals can aggregate periods / FY)</div>
+
+    <h2>Why not “just invoices”?</h2>
+    <p>
+      An invoice answers: <em>what does the customer owe this period?</em> (cash = RM399).
+      Your Excel schedule also answers: <em>how much of that is interest vs principal, and what is
+      the remaining receivable?</em> Those numbers must live on the schedule row
+      <em>before</em> and <em>after</em> billing — otherwise failed payments, partials, or early
+      buyout corrupt the income statement.
+    </p>
+    <p class="cite">
+      BillingPlatform and SaaS billing architecture both stress: billing and recognition answer
+      different questions; collapsing them into one table fails the first time payment and earning
+      diverge —
+      <a href="https://billingplatform.com/blog/billing-to-revenue-recognition-data-flow">BillingPlatform</a>,
+      <a href="https://www.saas-billing-architecture.com/tax-compliance-revenue-recognition/revenue-recognition-asc606/">SaaS Billing Architecture</a>.
+    </p>
+
+    <h2>What SaaS (Stripe / Chargebee) does differently</h2>
+    <p>
+      Subscriptions often <strong>do not</strong> pre-create 36 amort rows. They keep a subscription
+      with <code>next_billing_at</code> and spawn an Invoice each cycle. That works when the charge
+      is “plan price” and recognition is a separate waterfall — not when every period needs
+      reducing-balance interest/principal like a finance lease.
+    </p>
+    <p class="cite">
+      <a href="https://docs.stripe.com/data/query-billing-data">Stripe billing data model</a>:
+      Subscription → Invoice (recurring), not a stored EMI amort table.
+    </p>
+    <div class="callout">
+      <strong>GRSB RTO is closer to a loan schedule than to Stripe.</strong>
+      Pre-creating 36 Amortisation Periods on contract create is the right industry analogue.
+    </div>
+
+    <h2>Your Zoho design (aligned with industry)</h2>
+    <ul>
+      <li>On contract create → create 36 <strong>RTO Transaction</strong> records (Amortisation Periods).</li>
+      <li>View them on the contract via <strong>related list</strong> (cleaner screen — your Q5 goal).</li>
+      <li>Later: for period N due → create Books <strong>Invoice</strong> for Payment Amount; store invoice/payment refs on the period; Status → Invoiced → Paid.</li>
+    </ul>
+    <div class="callout warn">
+      Do <strong>not</strong> copy the 36 rows into a Table on the contract as a second store.
+      Related list <em>is</em> the nested view. A Table would duplicate truth and break “invoice from this period.”
+      Books Tables are fine for other line-item use cases —
+      <a href="https://www.zoho.com/books/help/custom-modules/basic-functions.html">custom module tables</a>.
+    </div>
+
+    <h2>Primary source (read next)</h2>
+    <p>
+      Start with
+      <a href="https://billingplatform.com/blog/billing-to-revenue-recognition-data-flow">Billing to Revenue Recognition Data Flow</a>
+      (10–15 min). Focus on the sentence: billing asks what they owe; recognition asks what we earned.
+      Your Amortisation Period row is where those clocks meet for RTO.
+    </p>
+
+    <div class="quiz" id="quiz1"></div>
+    <div class="quiz" id="quiz2"></div>
+
+    <p class="footer-note">
+      Ask follow-up questions in chat — I’m your teacher for this track.
+      Glossary: <a href="../reference/0001-schedule-invoice-glossary.html">schedule vs invoice terms</a>.
+      Next lesson (when you’re ready): Pending → Invoiced → Paid, and when to use Recurring Invoice.
+    </p>
+  </article>
+
+  <script type="module">
+    import { mountQuiz } from "../assets/quiz.js";
+
+    mountQuiz(document.getElementById("quiz1"), {
+      question: "Which object should own opening / interest / principal / closing?",
+      choices: [
+        "The Amortisation Period (RTO Transaction) row",
+        "The Zoho Books sales Invoice document only",
+        "A duplicated Table copied onto the Contract",
+      ],
+      correctIndex: 0,
+      explainOk: "Correct — the schedule row holds amort maths; the invoice bills cash for that period.",
+      explainBad: "Not quite — invoices bill cash; duplicating into a Table creates two truths.",
+    });
+
+    mountQuiz(document.getElementById("quiz2"), {
+      question: "Closest real-world analogue for GRSB RTO monthly billing?",
+      choices: [
+        "Loan EMI schedule then per-installment invoice",
+        "Stripe subscription with only next_billing_at",
+        "One annual invoice split by collections overlay",
+      ],
+      correctIndex: 0,
+      explainOk: "Correct — finance-lease RTO behaves like reducing-balance installments.",
+      explainBad: "SaaS next_billing_at skips stored amort maths; collections overlays are a different problem.",
+    });
+  </script>
+</body>
+</html>

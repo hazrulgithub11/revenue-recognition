@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rent-to-Own Rate Simulator</title>
+  <style>
+    :root {
+      --bg: #f4f1ea;
+      --ink: #1a1a1a;
+      --muted: #5c5c5c;
+      --accent: #c45a11;
+      --card: #fffdf8;
+      --border: #d8d0c4;
+      --pass: #1f6b3a;
+      --fail: #9b2335;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: Georgia, "Times New Roman", serif;
+      background: var(--bg);
+      color: var(--ink);
+      line-height: 1.5;
+    }
+
+    main {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 2rem 1.25rem 4rem;
+    }
+
+    h1 {
+      font-size: 1.85rem;
+      margin: 0 0 0.35rem;
+      font-weight: normal;
+    }
+
+    .subtitle {
+      color: var(--muted);
+      margin-bottom: 2rem;
+      max-width: 60ch;
+    }
+
+    section {
+      background: var(--card);
+      border: 1px solid var(--border);
+      padding: 1.25rem 1.5rem;
+      margin-bottom: 1.25rem;
+    }
+
+    h2 {
+      font-size: 1.05rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin: 0 0 1rem;
+      color: var(--accent);
+      font-family: "Segoe UI", sans-serif;
+      font-weight: 600;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 0.85rem 1rem;
+    }
+
+    label {
+      display: block;
+      font-family: "Segoe UI", sans-serif;
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+      margin-bottom: 0.25rem;
+    }
+
+    input, select {
+      width: 100%;
+      padding: 0.5rem 0.6rem;
+      border: 1px solid var(--border);
+      background: #fff;
+      font: inherit;
+    }
+
+    button {
+      font-family: "Segoe UI", sans-serif;
+      background: var(--ink);
+      color: #fff;
+      border: none;
+      padding: 0.65rem 1.2rem;
+      cursor: pointer;
+      margin-right: 0.5rem;
+      margin-top: 0.5rem;
+    }
+
+    button.secondary {
+      background: transparent;
+      color: var(--ink);
+      border: 1px solid var(--ink);
+    }
+
+    .results {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 0.75rem;
+    }
+
+    .metric {
+      padding: 0.75rem;
+      border-left: 3px solid var(--accent);
+      background: #faf7f2;
+    }
+
+    .metric .label {
+      font-family: "Segoe UI", sans-serif;
+      font-size: 0.75rem;
+      color: var(--muted);
+      text-transform: uppercase;
+    }
+
+    .metric .value {
+      font-size: 1.25rem;
+      margin-top: 0.15rem;
+    }
+
+    .metric .expected {
+      font-size: 0.82rem;
+      color: var(--muted);
+      margin-top: 0.2rem;
+    }
+
+    .match { color: var(--pass); }
+    .mismatch { color: var(--fail); }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-family: "Segoe UI", sans-serif;
+      font-size: 0.88rem;
+    }
+
+    th, td {
+      border-bottom: 1px solid var(--border);
+      padding: 0.45rem 0.5rem;
+      text-align: right;
+    }
+
+    th:first-child, td:first-child,
+    th:nth-child(2), td:nth-child(2) {
+      text-align: left;
+    }
+
+    th {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+    }
+
+    .note {
+      font-size: 0.9rem;
+      color: var(--muted);
+      margin-top: 0.75rem;
+    }
+
+    pre {
+      background: #201f1d;
+      color: #f2efe8;
+      padding: 1rem;
+      overflow-x: auto;
+      font-size: 0.82rem;
+      line-height: 1.45;
+    }
+
+    .dataset-table tbody tr {
+      cursor: pointer;
+    }
+
+    .dataset-table tbody tr:hover,
+    .dataset-table tbody tr.active {
+      background: #f0e8dc;
+    }
+
+    .dataset-table td.load-hint {
+      text-align: center;
+      color: var(--accent);
+      font-size: 0.78rem;
+    }
+
+    .test-banner {
+      font-family: "Segoe UI", sans-serif;
+      font-size: 0.9rem;
+      padding: 0.65rem 0.85rem;
+      background: #faf7f2;
+      border-left: 3px solid var(--accent);
+      margin-bottom: 1rem;
+    }
+
+    .test-banner.pass { border-left-color: var(--pass); }
+    .test-banner.fail { border-left-color: var(--fail); }
+
+    .table-wrap {
+      overflow-x: auto;
+      margin-bottom: 1rem;
+    }
+
+    .table-caption {
+      font-family: "Segoe UI", sans-serif;
+      font-size: 0.82rem;
+      color: var(--muted);
+      margin: 0 0 0.5rem;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Rent-to-Own Rate Simulator</h1>
+    <p class="subtitle">
+      JavaScript prototype for Excel <code>RATE(nper, -pmt, pv)</code> and the GRSB amortisation model.
+      Use this to verify logic before porting to Zoho Deluge.
+    </p>
+
+    <section>
+      <h2>Inputs</h2>
+      <div class="grid">
+        <div>
+          <label for="preset">Preset</label>
+          <select id="preset">
+            <option value="SO25-0001">SO25-0001 — HAKATA F&B (D1M, 36 × 399)</option>
+            <option value="SO25-0006">SO25-0006 — KAM KITCHENS (D1M, 36 × 699)</option>
+            <option value="SO25-0135">SO25-0135 — Craven F&B (Ice, 24 × 850)</option>
+            <option value="SO25-0138">SO25-0138 — Nyonya Recipe (Ice, 24 × 639)</option>
+            <option value="SO25-0172">SO25-0172 — Goldhill Reserve (D1M, 36 × 699)</option>
+            <option value="custom">Custom</option>
+          </select>
+        </div>
+        <div>
+          <label for="machineCost">Machine cost</label>
+          <input type="number" id="machineCost" step="0.01" value="10000">
+        </div>
+        <div>
+          <label for="leaseTerm">Lease term (months)</label>
+          <input type="number" id="leaseTerm" step="1" value="36">
+        </div>
+        <div>
+          <label for="monthlyPayment">Monthly payment</label>
+          <input type="number" id="monthlyPayment" step="0.01" value="399">
+        </div>
+        <div>
+          <label for="outrightPrice">Outright price</label>
+          <input type="number" id="outrightPrice" step="0.01" value="20068.8133333333">
+        </div>
+        <div>
+          <label for="maintenanceRate">Maintenance rate / year</label>
+          <input type="number" id="maintenanceRate" step="0.01" value="2873">
+        </div>
+        <div>
+          <label for="maintenanceYears">Maintenance years</label>
+          <input type="number" id="maintenanceYears" step="1" value="3">
+        </div>
+        <div>
+          <label for="method">Solver method</label>
+          <select id="method">
+            <option value="newton">Newton-Raphson (Excel-like)</option>
+            <option value="bisection">Bisection (safer fallback)</option>
+          </select>
+        </div>
+      </div>
+      <button id="calculateBtn">Calculate</button>
+      <button class="secondary" id="resetBtn">Reset to SO25-0001</button>
+      <button class="secondary" id="runAllBtn">Run all Excel tests</button>
+    </section>
+
+    <section>
+      <h2>Test datasets from Excel</h2>
+      <p class="note">All 5 contracts from <code>GRSB-Rent To Own-ZOHO 1.xlsx</code>. Click a row to load it into the calculator.</p>
+      <div id="allTestsBanner" class="test-banner" hidden></div>
+
+      <p class="table-caption">Inputs (what you enter)</p>
+      <div class="table-wrap">
+        <table class="dataset-table" id="inputsTable">
+          <thead>
+            <tr>
+              <th>Contract</th>
+              <th>Customer</th>
+              <th>Product</th>
+              <th>Cost</th>
+              <th>Term</th>
+              <th>Payment</th>
+              <th>Outright</th>
+              <th>Maint/yr</th>
+              <th>Maint yrs</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="inputsTableBody"></tbody>
+        </table>
+      </div>
+
+      <p class="table-caption">Expected outputs from Excel (what you should match)</p>
+      <div class="table-wrap">
+        <table class="dataset-table" id="expectedTable">
+          <thead>
+            <tr>
+              <th>Contract</th>
+              <th>Net price (C17)</th>
+              <th>Rate/mth (C29)</th>
+              <th>Machine (C25)</th>
+              <th>Maint (C26)</th>
+              <th>Profit (C33)</th>
+              <th>P1 interest</th>
+              <th>P1 principal</th>
+              <th>Total interest</th>
+              <th>Total principal</th>
+            </tr>
+          </thead>
+          <tbody id="expectedTableBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section>
+      <h2>Summary vs Excel</h2>
+      <div class="results" id="summary"></div>
+      <p class="note" id="solverNote"></p>
+    </section>
+
+    <section>
+      <h2>Amortisation schedule</h2>
+      <div style="overflow-x:auto">
+        <table>
+          <thead>
+            <tr>
+              <th>Period</th>
+              <th>Opening</th>
+              <th>Interest</th>
+              <th>Cash</th>
+              <th>Principal</th>
+              <th>Closing</th>
+            </tr>
+          </thead>
+          <tbody id="scheduleBody"></tbody>
+          <tfoot id="scheduleFoot"></tfoot>
+        </table>
+      </div>
+    </section>
+
+    <section>
+      <h2>Deluge porting notes</h2>
+      <pre id="delugeSnippet"></pre>
+    </section>
+  </main>
+
+  <script>
+    const PRESETS = {
+      "SO25-0001": {
+        customer: "HAKATA F&B SDN BHD",
+        productType: "D1M",
+        nature: "Rent-to-own Dishwasher",
+        machineCost: 10000,
+        leaseTerm: 36,
+        monthlyPayment: 399,
+        outrightPrice: 20068.8133333333,
+        maintenanceRate: 2873,
+        maintenanceYears: 3,
+        expected: {
+          netSellingPrice: 11449.8133333333,
+          monthlyRate: 0.0128099222505703,
+          machinePortion: 4579.44706209969,
+          maintenancePortion: 6870.36627123364,
+          sellingProfit: 1449.81333333334,
+          period1Interest: 146.671218583543,
+          period1Principal: 252.328781416457,
+          totalInterest: 2914.18666666659,
+          totalPrincipal: 11449.8133333334
+        }
+      },
+      "SO25-0006": {
+        customer: "KAM KITCHENS HOME SDN BHD",
+        productType: "D1M",
+        nature: "Rent-to-own Dishwasher",
+        machineCost: 10000,
+        leaseTerm: 36,
+        monthlyPayment: 699,
+        outrightPrice: 22634,
+        maintenanceRate: 2873,
+        maintenanceYears: 3,
+        expected: {
+          netSellingPrice: 14015,
+          monthlyRate: 0.0358317225821541,
+          machinePortion: 9214.67870767763,
+          maintenancePortion: 4800.32129232237,
+          sellingProfit: 4015,
+          period1Interest: 502.181591988889,
+          period1Principal: 196.818408011111,
+          totalInterest: 11149.00000000005,
+          totalPrincipal: 14014.999999999953
+        }
+      },
+      "SO25-0135": {
+        customer: "Craven F&B",
+        productType: "NI1050",
+        nature: "Rent-to-own ice machine",
+        machineCost: 13451.6988,
+        leaseTerm: 24,
+        monthlyPayment: 850,
+        outrightPrice: 17855.2347959969,
+        maintenanceRate: 2288,
+        maintenanceYears: 2,
+        expected: {
+          netSellingPrice: 13279.2347959969,
+          monthlyRate: 0.0376369545815312,
+          machinePortion: 10300.5201672478,
+          maintenancePortion: 2978.71462874911,
+          sellingProfit: -172.464004003081,
+          period1Interest: 499.789956894425,
+          period1Principal: 350.210043105575,
+          totalInterest: 7120.765204002996,
+          totalPrincipal: 13279.234795997005
+        }
+      },
+      "SO25-0138": {
+        customer: "Nyonya Recipe",
+        productType: "CI500",
+        nature: "Rent-to-own ice machine",
+        machineCost: 5517.6629,
+        leaseTerm: 24,
+        monthlyPayment: 639,
+        outrightPrice: 15287,
+        maintenanceRate: 2288,
+        maintenanceYears: 2,
+        expected: {
+          netSellingPrice: 10711,
+          monthlyRate: 0.0309577764114425,
+          machinePortion: 7515.02086593636,
+          maintenancePortion: 3195.97913406364,
+          sellingProfit: 5193.3371,
+          period1Interest: 331.588743142961,
+          period1Principal: 307.411256857039,
+          totalInterest: 4624.999999999939,
+          totalPrincipal: 10711.000000000062
+        }
+      },
+      "SO25-0172": {
+        customer: "Goldhill Reserve Sdn Bhd",
+        productType: "D1M",
+        nature: "Rent-to-own Dishwasher",
+        machineCost: 10000,
+        leaseTerm: 36,
+        monthlyPayment: 699,
+        outrightPrice: 22634,
+        maintenanceRate: 2873,
+        maintenanceYears: 3,
+        expected: {
+          netSellingPrice: 14015,
+          monthlyRate: 0.0358317225821541,
+          machinePortion: 9214.67870767763,
+          maintenancePortion: 4800.32129232237,
+          sellingProfit: 4015,
+          period1Interest: 502.181591988889,
+          period1Principal: 196.818408011111,
+          totalInterest: 11149.00000000005,
+          totalPrincipal: 14014.999999999953
+        }
+      }
+    };
+
+    function fmt(n, digits = 2) {
+      return Number(n).toLocaleString("en-MY", {
+        minimumFractionDigits: digits,
+        maximumFractionDigits: digits
+      });
+    }
+
+    function fmtRate(n) {
+      return (n * 100).toFixed(4) + "% / month";
+    }
+
+    function annuityFactor(rate, nper) {
+      if (rate === 0) return nper;
+      return (1 - Math.pow(1 + rate, -nper)) / rate;
+    }
+
+    function presentValueFromPayment(rate, pmt, nper) {
+      return pmt * annuityFactor(rate, nper);
+    }
+
+    function rateEquation(rate, pv, pmt, nper) {
+      return presentValueFromPayment(rate, pmt, nper) - pv;
+    }
+
+    function calculateRateNewton(pv, pmt, nper, guess = 0.01) {
+      let rate = guess;
+      const tolerance = 1e-12;
+      const maxIterations = 100;
+
+      for (let i = 0; i < maxIterations; i++) {
+        const onePlusRate = 1 + rate;
+        const powTerm = Math.pow(onePlusRate, -nper);
+        const numerator = 1 - powTerm;
+        const f = pmt * (numerator / rate) - pv;
+
+        if (Math.abs(f) < tolerance) {
+          return { rate, iterations: i + 1, converged: true, method: "newton" };
+        }
+
+        const du = nper * Math.pow(onePlusRate, -nper - 1);
+        const dA = (du * rate - numerator) / (rate * rate);
+        const fPrime = pmt * dA;
+
+        if (Math.abs(fPrime) < 1e-15) break;
+
+        rate -= f / fPrime;
+        if (rate <= 0) rate = 0.0001;
+        if (rate > 1) rate = 1;
+      }
+
+      return { rate, iterations: maxIterations, converged: false, method: "newton" };
+    }
+
+    function calculateRateBisection(pv, pmt, nper) {
+      let low = 0.000001;
+      let high = 1;
+      const tolerance = 1e-12;
+
+      for (let i = 0; i < 100; i++) {
+        const mid = (low + high) / 2;
+        const fMid = rateEquation(mid, pv, pmt, nper);
+
+        if (Math.abs(fMid) < tolerance) {
+          return { rate: mid, iterations: i + 1, converged: true, method: "bisection" };
+        }
+
+        const fLow = rateEquation(low, pv, pmt, nper);
+        if (fLow * fMid <= 0) high = mid;
+        else low = mid;
+      }
+
+      const rate = (low + high) / 2;
+      return { rate, iterations: 100, converged: true, method: "bisection" };
+    }
+
+    function buildSchedule(netInvestment, monthlyPayment, monthlyRate, nper) {
+      const rows = [];
+      let opening = netInvestment;
+      let totalInterest = 0;
+      let totalPrincipal = 0;
+
+      for (let period = 1; period <= nper; period++) {
+        const interest = opening * monthlyRate;
+        const cash = opening <= 1 ? 0 : monthlyPayment;
+        const principal = cash - interest;
+        const closing = opening - principal;
+
+        rows.push({ period, opening, interest, cash, principal, closing });
+
+        totalInterest += interest;
+        totalPrincipal += principal;
+        opening = closing > 0 ? closing : 0;
+      }
+
+      return { rows, totalInterest, totalPrincipal };
+    }
+
+    function compare(actual, expected, tolerance = 0.02) {
+      if (expected === undefined) return { text: "No Excel benchmark", cls: "" };
+      const diff = Math.abs(actual - expected);
+      const ok = diff <= tolerance;
+      return {
+        text: `Excel: ${fmt(expected, diff < 0.0001 ? 6 : 2)} ${ok ? "✓" : "✗ diff " + diff.toExponential(2)}`,
+        cls: ok ? "match" : "mismatch"
+      };
+    }
+
+    function readInputs() {
+      return {
+        machineCost: Number(document.getElementById("machineCost").value),
+        leaseTerm: Number(document.getElementById("leaseTerm").value),
+        monthlyPayment: Number(document.getElementById("monthlyPayment").value),
+        outrightPrice: Number(document.getElementById("outrightPrice").value),
+        maintenanceRate: Number(document.getElementById("maintenanceRate").value),
+        maintenanceYears: Number(document.getElementById("maintenanceYears").value),
+        method: document.getElementById("method").value,
+        preset: document.getElementById("preset").value
+      };
+    }
+
+    function computeFromPreset(preset, method = "newton") {
+      const netSellingPrice = preset.outrightPrice - (preset.maintenanceRate * preset.maintenanceYears);
+      const totalLeasePayment = preset.leaseTerm * preset.monthlyPayment;
+      const totalMaintenanceFee = preset.maintenanceRate * preset.maintenanceYears;
+      const machineCashPortion = totalLeasePayment - totalMaintenanceFee;
+
+      const solver = method === "bisection"
+        ? calculateRateBisection(netSellingPrice, preset.monthlyPayment, preset.leaseTerm)
+        : calculateRateNewton(netSellingPrice, preset.monthlyPayment, preset.leaseTerm);
+
+      const monthlyRate = solver.rate;
+      const machinePortion = machineCashPortion / totalLeasePayment * netSellingPrice;
+      const maintenancePortion = totalMaintenanceFee / totalLeasePayment * netSellingPrice;
+      const sellingProfit = netSellingPrice - preset.machineCost;
+      const schedule = buildSchedule(netSellingPrice, preset.monthlyPayment, monthlyRate, preset.leaseTerm);
+
+      return {
+        netSellingPrice,
+        monthlyRate,
+        machinePortion,
+        maintenancePortion,
+        sellingProfit,
+        period1Interest: schedule.rows[0].interest,
+        period1Principal: schedule.rows[0].principal,
+        totalInterest: schedule.totalInterest,
+        totalPrincipal: schedule.totalPrincipal,
+        solver
+      };
+    }
+
+    function isClose(actual, expected, tolerance = 0.02) {
+      if (expected === undefined) return true;
+      return Math.abs(actual - expected) <= tolerance;
+    }
+
+    function renderTestTables() {
+      const inputsBody = document.getElementById("inputsTableBody");
+      const expectedBody = document.getElementById("expectedTableBody");
+
+      inputsBody.innerHTML = Object.entries(PRESETS).map(([id, p]) => `
+        <tr data-preset="${id}">
+          <td>${id}</td>
+          <td>${p.customer}</td>
+          <td>${p.productType}</td>
+          <td>${fmt(p.machineCost, 2)}</td>
+          <td>${p.leaseTerm}</td>
+          <td>${fmt(p.monthlyPayment, 2)}</td>
+          <td>${fmt(p.outrightPrice, 2)}</td>
+          <td>${fmt(p.maintenanceRate, 2)}</td>
+          <td>${p.maintenanceYears}</td>
+          <td class="load-hint">Load →</td>
+        </tr>
+      `).join("");
+
+      expectedBody.innerHTML = Object.entries(PRESETS).map(([id, p]) => {
+        const e = p.expected;
+        return `
+        <tr data-preset="${id}">
+          <td>${id}</td>
+          <td>${fmt(e.netSellingPrice, 2)}</td>
+          <td>${(e.monthlyRate * 100).toFixed(4)}%</td>
+          <td>${fmt(e.machinePortion, 2)}</td>
+          <td>${fmt(e.maintenancePortion, 2)}</td>
+          <td>${fmt(e.sellingProfit, 2)}</td>
+          <td>${fmt(e.period1Interest, 2)}</td>
+          <td>${fmt(e.period1Principal, 2)}</td>
+          <td>${fmt(e.totalInterest, 2)}</td>
+          <td>${fmt(e.totalPrincipal, 2)}</td>
+        </tr>`;
+      }).join("");
+
+      document.querySelectorAll(".dataset-table tbody tr").forEach(row => {
+        row.addEventListener("click", () => {
+          const presetId = row.dataset.preset;
+          document.getElementById("preset").value = presetId;
+          loadPreset(presetId);
+          highlightActiveRow(presetId);
+          calculate();
+        });
+      });
+    }
+
+    function highlightActiveRow(presetId) {
+      document.querySelectorAll(".dataset-table tbody tr").forEach(row => {
+        row.classList.toggle("active", row.dataset.preset === presetId);
+      });
+    }
+
+    function runAllTests() {
+      const method = document.getElementById("method").value;
+      const results = [];
+      let passed = 0;
+      let failed = 0;
+
+      for (const [id, preset] of Object.entries(PRESETS)) {
+        const actual = computeFromPreset(preset, method);
+        const e = preset.expected;
+        const checks = [
+          ["netSellingPrice", actual.netSellingPrice, e.netSellingPrice],
+          ["monthlyRate", actual.monthlyRate, e.monthlyRate],
+          ["machinePortion", actual.machinePortion, e.machinePortion],
+          ["maintenancePortion", actual.maintenancePortion, e.maintenancePortion],
+          ["sellingProfit", actual.sellingProfit, e.sellingProfit],
+          ["period1Interest", actual.period1Interest, e.period1Interest],
+          ["period1Principal", actual.period1Principal, e.period1Principal],
+          ["totalInterest", actual.totalInterest, e.totalInterest],
+          ["totalPrincipal", actual.totalPrincipal, e.totalPrincipal]
+        ];
+
+        const failedChecks = checks.filter(([, a, exp]) => !isClose(a, exp));
+        const ok = failedChecks.length === 0 && actual.solver.converged;
+        if (ok) passed++;
+        else failed++;
+
+        results.push({ id, ok, failedChecks, converged: actual.solver.converged });
+      }
+
+      const banner = document.getElementById("allTestsBanner");
+      banner.hidden = false;
+      banner.className = "test-banner " + (failed === 0 ? "pass" : "fail");
+      banner.innerHTML = failed === 0
+        ? `<strong>All ${passed} Excel datasets passed</strong> using ${method} solver.`
+        : `<strong>${failed} failed, ${passed} passed.</strong> See details below.`;
+
+      if (failed > 0) {
+        const details = results.filter(r => !r.ok).map(r => {
+          const names = r.failedChecks.map(([name]) => name).join(", ");
+          return `${r.id}${names ? ` (${names})` : ""}${r.converged ? "" : " [no converge]"}`;
+        }).join(" · ");
+        banner.innerHTML = `<strong>${failed} failed, ${passed} passed.</strong> Check: ${details}`;
+      }
+
+      return { passed, failed, results };
+    }
+
+    function loadPreset(name) {
+      const preset = PRESETS[name];
+      if (!preset) return;
+
+      document.getElementById("machineCost").value = preset.machineCost;
+      document.getElementById("leaseTerm").value = preset.leaseTerm;
+      document.getElementById("monthlyPayment").value = preset.monthlyPayment;
+      document.getElementById("outrightPrice").value = preset.outrightPrice;
+      document.getElementById("maintenanceRate").value = preset.maintenanceRate;
+      document.getElementById("maintenanceYears").value = preset.maintenanceYears;
+    }
+
+    function calculate() {
+      const input = readInputs();
+      const expected = PRESETS[input.preset]?.expected;
+
+      const netSellingPrice = input.outrightPrice - (input.maintenanceRate * input.maintenanceYears);
+      const totalLeasePayment = input.leaseTerm * input.monthlyPayment;
+      const totalMaintenanceFee = input.maintenanceRate * input.maintenanceYears;
+      const machineCashPortion = totalLeasePayment - totalMaintenanceFee;
+
+      const solver = input.method === "bisection"
+        ? calculateRateBisection(netSellingPrice, input.monthlyPayment, input.leaseTerm)
+        : calculateRateNewton(netSellingPrice, input.monthlyPayment, input.leaseTerm);
+
+      const monthlyRate = solver.rate;
+      const netInvestment = netSellingPrice;
+      const machinePortion = machineCashPortion / totalLeasePayment * netInvestment;
+      const maintenancePortion = totalMaintenanceFee / totalLeasePayment * netInvestment;
+      const sellingProfit = netInvestment - input.machineCost;
+
+      const schedule = buildSchedule(netInvestment, input.monthlyPayment, monthlyRate, input.leaseTerm);
+      const annualEffectiveRate = Math.pow(1 + monthlyRate, 12) - 1;
+
+      const metrics = [
+        ["Net selling price (C17)", netSellingPrice, expected?.netSellingPrice],
+        ["Monthly rate (C29)", monthlyRate, expected?.monthlyRate, fmtRate],
+        ["Annual effective rate", annualEffectiveRate, undefined, r => (r * 100).toFixed(2) + "%"],
+        ["Machine portion (C25)", machinePortion, expected?.machinePortion],
+        ["Maintenance portion (C26)", maintenancePortion, expected?.maintenancePortion],
+        ["Selling profit (C33)", sellingProfit, expected?.sellingProfit],
+        ["Period 1 interest", schedule.rows[0].interest, expected?.period1Interest],
+        ["Period 1 principal", schedule.rows[0].principal, expected?.period1Principal],
+        ["Total interest", schedule.totalInterest, expected?.totalInterest],
+        ["Total principal", schedule.totalPrincipal, expected?.totalPrincipal]
+      ];
+
+      document.getElementById("summary").innerHTML = metrics.map(([label, actual, exp, formatter]) => {
+        const cmp = compare(actual, exp);
+        const display = formatter ? formatter(actual) : fmt(actual, 2);
+        return `
+          <div class="metric">
+            <div class="label">${label}</div>
+            <div class="value">${display}</div>
+            <div class="expected ${cmp.cls}">${cmp.text}</div>
+          </div>`;
+      }).join("");
+
+      document.getElementById("solverNote").textContent =
+        `Solver: ${solver.method}, converged: ${solver.converged}, iterations: ${solver.iterations}. ` +
+        `Formula: PV = PMT × (1 − (1+r)^−n) / r`;
+
+      document.getElementById("scheduleBody").innerHTML = schedule.rows.map(row => `
+        <tr>
+          <td>${row.period}</td>
+          <td>${fmt(row.opening, 2)}</td>
+          <td>${fmt(row.interest, 2)}</td>
+          <td>${fmt(row.cash, 2)}</td>
+          <td>${fmt(row.principal, 2)}</td>
+          <td>${fmt(row.closing, 2)}</td>
+        </tr>
+      `).join("");
+
+      document.getElementById("scheduleFoot").innerHTML = `
+        <tr>
+          <th colspan="2">Totals</th>
+          <th>${fmt(schedule.totalInterest, 2)}</th>
+          <th>${fmt(input.monthlyPayment * input.leaseTerm, 2)}</th>
+          <th>${fmt(schedule.totalPrincipal, 2)}</th>
+          <th></th>
+        </tr>`;
+
+      document.getElementById("delugeSnippet").textContent =
+`// Deluge equivalent — translate from tested JS logic
+netSellingPrice = outrightPrice - (maintenanceRate * maintenanceYears);
+totalLeasePayment = leaseTerm * monthlyPayment;
+totalMaintenanceFee = maintenanceRate * maintenanceYears;
+machineCashPortion = totalLeasePayment - totalMaintenanceFee;
+
+rateMap = calculate_monthly_rate(
+  pv: netSellingPrice,
+  pmt: monthlyPayment,
+  nper: leaseTerm
+);
+monthlyRate = rateMap.get("rate"); // JS result: ${monthlyRate}
+
+machinePortion = machineCashPortion / totalLeasePayment * netSellingPrice;
+maintenancePortion = totalMaintenanceFee / totalLeasePayment * netSellingPrice;
+sellingProfit = netSellingPrice - machineCost;
+
+// Period loop in Deluge:
+openingBalance = netSellingPrice;
+interest = openingBalance * monthlyRate;
+principal = monthlyPayment - interest;
+closingBalance = openingBalance - principal;`;
+
+      highlightActiveRow(input.preset !== "custom" ? input.preset : null);
+    }
+
+    document.getElementById("preset").addEventListener("change", (e) => {
+      if (e.target.value !== "custom") {
+        loadPreset(e.target.value);
+        highlightActiveRow(e.target.value);
+      }
+      calculate();
+    });
+
+    document.getElementById("calculateBtn").addEventListener("click", calculate);
+    document.getElementById("runAllBtn").addEventListener("click", runAllTests);
+    document.getElementById("resetBtn").addEventListener("click", () => {
+      document.getElementById("preset").value = "SO25-0001";
+      loadPreset("SO25-0001");
+      highlightActiveRow("SO25-0001");
+      calculate();
+    });
+
+    ["machineCost", "leaseTerm", "monthlyPayment", "outrightPrice", "maintenanceRate", "maintenanceYears", "method"]
+      .forEach(id => document.getElementById(id).addEventListener("input", () => {
+        document.getElementById("preset").value = "custom";
+        highlightActiveRow(null);
+        calculate();
+      }));
+
+    renderTestTables();
+    loadPreset("SO25-0001");
+    highlightActiveRow("SO25-0001");
+    calculate();
+  </script>
+</body>
+</html>

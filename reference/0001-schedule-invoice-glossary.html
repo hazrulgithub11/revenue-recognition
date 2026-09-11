@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Reference — Schedule vs invoice</title>
+  <link rel="stylesheet" href="../assets/lesson.css" />
+  <style>
+    table { width: 100%; border-collapse: collapse; font-family: var(--sans); font-size: 0.88rem; margin: 1rem 0; }
+    th, td { border-bottom: 1px solid var(--line); text-align: left; padding: 0.45rem 0.35rem; vertical-align: top; }
+    th { font-weight: 650; color: var(--accent); }
+  </style>
+</head>
+<body>
+  <article class="lesson">
+    <p class="eyebrow">Reference · print-friendly</p>
+    <h1>Schedule vs invoice (RTO)</h1>
+
+    <h2>Layers</h2>
+    <table>
+      <thead>
+        <tr><th>Layer</th><th>Owns</th><th>GRSB / Zoho</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Contract</td>
+          <td>Term, principal, rate, monthly cash</td>
+          <td><code>cm_rent_to_own_contract</code></td>
+        </tr>
+        <tr>
+          <td>Amortisation Period</td>
+          <td>Opening, finance income, payment, principal, closing, period status</td>
+          <td><code>cm_rto_transactions</code> (UI: RTO Transaction)</td>
+        </tr>
+        <tr>
+          <td>Invoice</td>
+          <td>Customer billing document for period cash</td>
+          <td>Zoho Books Invoice</td>
+        </tr>
+        <tr>
+          <td>Payment</td>
+          <td>Cash application</td>
+          <td>Customer Payment → link on period</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>Industry analogues</h2>
+    <ul>
+      <li><strong>Loan / EMI ERPs</strong> — pre-build schedule → invoice per installment (closest to RTO).</li>
+      <li><strong>SaaS billing</strong> — subscription + next bill date → invoice; no reducing-balance amort table.</li>
+      <li><strong>Billing vs recognition</strong> — different clocks; don’t store amort only on the invoice.</li>
+    </ul>
+
+    <h2>UX rule</h2>
+    <p>Show periods under the contract with a <strong>related list</strong>. Do not duplicate the same 36 rows into a contract Table.</p>
+
+    <h2>Future invoice rule</h2>
+    <p>Invoice ← Amortisation Period (one period → one invoice for full Payment Amount, MVP). Period Status: Pending → Invoiced → Paid.</p>
+
+    <p class="footer-note">
+      Lesson: <a href="../lessons/0001-schedule-vs-invoice.html">0001 — Schedule rows vs invoices</a>
+    </p>
+  </article>
+</body>
+</html>

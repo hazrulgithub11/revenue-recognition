@@ -1,0 +1,172 @@
+organizationID = organization.get("organization_id");
+domainUrl = organization.get("api_root_endpoint");
+customModuleApiName = "cm_rent_to_own_contract";
+
+recordID = cm_rent_to_own_contract.get("module_record_id");
+
+if(recordID == null || recordID == "")
+{
+	info "rto_calculate_contract_fields: missing module_record_id";
+	return;
+}
+
+getResponse = invokeurl
+[
+	url :domainUrl + "/" + customModuleApiName + "/" + recordID + "?organization_id=" + organizationID
+	type :GET
+	connection :"zbooks"
+];
+
+if(getResponse.get("code") != 0)
+{
+	info "rto_calculate_contract_fields: GET failed — " + getResponse.get("message");
+	return;
+}
+
+record = getResponse.get("module_record");
+if(record == null)
+{
+	info "rto_calculate_contract_fields: empty module_record";
+	return;
+}
+
+fieldMap = Map();
+recordHash = getResponse.get("module_record_hash");
+if(recordHash != null)
+{
+	fieldMap.putAll(recordHash);
+}
+moduleFields = record.get("module_fields");
+if(moduleFields != null)
+{
+	for each fld in moduleFields
+	{
+		apiName = fld.get("api_name");
+		if(apiName != null)
+		{
+			fieldMap.put(apiName, fld.get("value"));
+		}
+	}
+}
+
+// Prefer trigger map (workflow), then parsed GET fields, then flat module_record
+nRaw = cm_rent_to_own_contract.get("cf_rto_period");
+pvRaw = cm_rent_to_own_contract.get("cf_rto_principal_wip");
+pmtRaw = cm_rent_to_own_contract.get("cf_rto_monthly_payment_amount_wip");
+
+if(nRaw == null || nRaw == "")
+{
+	nRaw = fieldMap.get("cf_rto_period");
+}
+if(nRaw == null || nRaw == "")
+{
+	nRaw = record.get("cf_rto_period");
+}
+if(pvRaw == null || pvRaw == "")
+{
+	pvRaw = fieldMap.get("cf_rto_principal_wip");
+}
+if(pvRaw == null || pvRaw == "")
+{
+	pvRaw = record.get("cf_rto_principal_wip");
+}
+if(pmtRaw == null || pmtRaw == "")
+{
+	pmtRaw = fieldMap.get("cf_rto_monthly_payment_amount_wip");
+}
+if(pmtRaw == null || pmtRaw == "")
+{
+	pmtRaw = record.get("cf_rto_monthly_payment_amount_wip");
+}
+
+if(nRaw == null || nRaw == "" || pvRaw == null || pvRaw == "" || pmtRaw == null || pmtRaw == "")
+{
+	info "rto_calculate_contract_fields: skip — period / principal / monthly payment missing — n=" + nRaw + " PV=" + pvRaw + " PMT=" + pmtRaw;
+	return;
+}
+
+n = nRaw.toDecimal();
+PV = pvRaw.toDecimal();
+PMT = pmtRaw.toDecimal();
+
+if(n <= 0 || PV <= 0 || PMT <= 0)
+{
+	info "rto_calculate_contract_fields: skip — period / principal / monthly payment must be > 0";
+	return;
+}
+
+// Newton-Raphson: solve PV = PMT * (1 - (1+r)^(-n)) / r
+r = 0.01;
+tolerance = 0.0000000001;
+converged = false;
+
+iterList = "".leftPad(99).toList("");
+info "iterList size=" + iterList.size();
+
+for each index i in iterList
+{
+	onePlusRate = 1 + r;
+	powTerm = onePlusRate.power(0 - n);
+	numerator = 1 - powTerm;
+	f = PMT * (numerator / r) - PV;
+
+	if(abs(f) < tolerance)
+	{
+		converged = true;
+		break;
+	}
+
+	du = n * onePlusRate.power(0 - n - 1);
+	dA = (du * r - numerator) / (r * r);
+	fPrime = PMT * dA;
+
+	if(abs(fPrime) < 0.000000000000001)
+	{
+		break;
+	}
+
+	r = r - (f / fPrime);
+	if(r <= 0)
+	{
+		r = 0.0001;
+	}
+	if(r > 1)
+	{
+		r = 1;
+	}
+}
+
+if(converged == false)
+{
+	info "rto_calculate_contract_fields: RATE did not fully converge after 100 iterations; writing last r=" + r;
+}
+
+interest_tot = round((PMT * n) - PV, 2);
+paid_off = 0;
+balance = round((PV + interest_tot) - paid_off, 2);
+
+updateMap = Map();
+updateMap.put("cf_rto_interest_wip", r);
+updateMap.put("cf_interest_total_wip", interest_tot);
+updateMap.put("cf_rto_paid_off_amount_wip", paid_off);
+updateMap.put("cf_rto_current_balance", balance);
+
+body = Map();
+body.put("JSONString", updateMap);
+
+putResponse = invokeurl
+[
+	url :domainUrl + "/" + customModuleApiName + "/" + recordID + "?organization_id=" + organizationID
+	type :PUT
+	parameters :body
+	connection :"zbooks"
+];
+
+if(putResponse.get("code") == 0)
+{
+	info "rto_calculate_contract_fields: updated " + recordID + " r=" + r + " interest_tot=" + interest_tot + " balance=" + balance;
+}
+else
+{
+	info "rto_calculate_contract_fields: PUT failed — " + putResponse.get("message");
+}
