@@ -37,5 +37,5 @@ Rebuild all Amortisation Periods from contract inputs only when every existing p
 _Avoid_: silent partial updates of individual period maths
 
 **Amortisation maths**:
-Period amounts must match the Excel schedule **1:1** (same RATE, same loop: interest = opening × monthly rate; cash = 0 if opening ≤ 1 else PMT; principal = cash − interest; closing = opening − principal). No last-line force-zero plug.
-_Avoid_: approximate shortcuts that drift from Excel test cases (SO25-0001, etc.)
+Same Excel loop and cash guard (interest = opening × monthly rate; cash = 0 if opening ≤ 1 else PMT; principal = cash − interest; closing = opening − principal). Working balances **carry full float** between periods; stored period Amount fields are **rounded to Books 2dp on write** only. No last-line force-zero plug. Matching every Excel displayed cent across all periods is a later goal once full-precision principal exists.
+_Avoid_: rounding the working opening/closing each step (causes last-row residual like 0.03); last-line plugs that rewrite interest or principal

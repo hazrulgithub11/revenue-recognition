@@ -97,7 +97,7 @@ Detail lives in per-task files under [`02-rent-to-own-mvp/`](feature-specs/02-re
 | # | Task | Status | Spec |
 |---|------|--------|------|
 | 1 | Extend `rto_calculate_contract_fields` with Phase-2 period loop | ✅ Done | [`function/rto_calculate_contract_fields.ds`](function/rto_calculate_contract_fields.ds) |
-| 2 | Acceptance test SO25-0001 full schedule (36 rows, Excel 1:1) | ⬜ Pending manual run | [`03-rto-transactions/01-test-so25-0001-schedule.md`](feature-specs/03-rto-transactions/01-test-so25-0001-schedule.md) |
+| 2 | Acceptance test SO25-0001 full schedule (36 rows; last close 0.00; float-carry) | ⬜ Pending manual run | [`03-rto-transactions/01-test-so25-0001-schedule.md`](feature-specs/03-rto-transactions/01-test-so25-0001-schedule.md) |
 | 3 | Acceptance test SO25-0006 full schedule | ⬜ Pending manual run | [`03-rto-transactions/02-test-so25-0006-schedule.md`](feature-specs/03-rto-transactions/02-test-so25-0006-schedule.md) |
 | 4 | Acceptance test regenerate + lock | ⬜ Pending manual run | [`03-rto-transactions/03-test-regenerate-lock.md`](feature-specs/03-rto-transactions/03-test-regenerate-lock.md) |
 

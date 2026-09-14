@@ -180,7 +180,7 @@ info "rto_calculate_contract_fields: updated " + recordID + " r=" + r + " intere
 //   2. List existing periods for this contract
 //   3. Lock check — if any period is NOT Pending, skip regeneration
 //   4. Delete all existing Pending periods
-//   5. Create n new Amortisation Periods (Excel amort loop 1:1)
+//   5. Create n new Amortisation Periods (Excel amort loop; float-carry / round-on-write)
 // ============================================================
 
 txModuleApiName = "cm_rto_transactions";
@@ -379,18 +379,20 @@ for each pRec in existingPeriods
 	}
 }
 
-// --- 5. Create n new Amortisation Periods (Excel amort loop 1:1) ---
+// --- 5. Create n new Amortisation Periods (Excel amort loop; float-carry) ---
 // Ref: learning-records/0005-excel-amort-no-plug.md
 // Ref: learning-records/0006-pmt-and-customer-copy.md
 // Ref: learning-records/0007-excel-1to1-and-lock-edits.md
+// Issue: #2 — working balances carry full float; round to Books 2dp only on write
 //
-// Loop variables:
-//   opening   — start of period receivable; period-1 seeded from cf_rto_principal_wip (RTO Principal WIP)
-//   interest  = round(opening × r, 2)
+// Loop variables (working = full Deluge float between periods):
+//   opening   — start of period receivable; period-1 seeded from cf_rto_principal_wip
+//   interest  = opening × r
 //   cash      = PMT if opening > 1, else 0  (Excel cash guard)
-//   principal = round(cash − interest, 2)
-//   closing   = round(opening − principal, 2)
-//   next opening = max(0, closing)  — Excel ≤0 guard
+//   principal = cash − interest
+//   closing   = opening − principal
+//   next opening = prior working closing; if ≤ 0 → 0 (Excel guard). Do NOT round(closing) into opening.
+// Stored Amount fields: round(..., 2) on POST only. Tiny negative rounded close → 0. No last-line plug.
 //
 // Date: period-1 date = cf_rto_start_date; each subsequent = prior + 1 calendar month (EDATE).
 
@@ -404,9 +406,10 @@ if(datePrefix != null)
 }
 
 sdParts = startDateStr.toList("-");
-curYear = sdParts.get(0).toDecimal();
-curMonth = sdParts.get(1).toDecimal();
-curDay = sdParts.get(2).toDecimal();
+// Use toLong — toDecimal() stringifies as "2026.00" / "09.00" and Books rejects those dates
+curYear = sdParts.get(0).toLong();
+curMonth = sdParts.get(1).toLong();
+curDay = sdParts.get(2).toLong();
 
 opening = PV;
 
@@ -420,8 +423,8 @@ for each index idx in periodDummy
 		break;
 	}
 
-	// --- Excel amort formulas ---
-	interest = round(opening * r, 2);
+	// --- Excel amort formulas (full float; round only when writing below) ---
+	interest = opening * r;
 
 	cash = PMT;
 	if(opening <= 1)
@@ -429,11 +432,22 @@ for each index idx in periodDummy
 		cash = 0.0;
 	}
 
-	principal = round(cash - interest, 2);
-	closing = round(opening - principal, 2);
+	principal = cash - interest;
+	closing = opening - principal;
+
+	// Books Amount fields: round-on-write
+	storedOpening = round(opening, 2);
+	storedInterest = round(interest, 2);
+	storedCash = round(cash, 2);
+	storedPrincipal = round(principal, 2);
+	storedClosing = round(closing, 2);
+	// Tiny negative float closings (Excel-scale) store as 0.00 — never −0.00 noise
+	if(storedClosing <= 0)
+	{
+		storedClosing = 0.0;
+	}
 
 	// --- Build period date string "yyyy-MM-dd" ---
-	// Using string concatenation ("" + number) to avoid Decimal.toString() trailing ".0"
 	if(curMonth < 10)
 	{
 		mStr = "0" + curMonth;
@@ -464,11 +478,11 @@ for each index idx in periodDummy
 	periodData.put("cf_rto_contract_no", recordID);
 	periodData.put("cf_date", periodDateStr);
 	periodData.put("cf_status", "Pending");
-	periodData.put("cf_principal_opening_balance", opening);
-	periodData.put("cf_payment_amount", cash);
-	periodData.put("cf_finance_income", interest);
-	periodData.put("cf_principal_reduction", principal);
-	periodData.put("cf_principal_closing_balance", closing);
+	periodData.put("cf_principal_opening_balance", storedOpening);
+	periodData.put("cf_payment_amount", storedCash);
+	periodData.put("cf_finance_income", storedInterest);
+	periodData.put("cf_principal_reduction", storedPrincipal);
+	periodData.put("cf_principal_closing_balance", storedClosing);
 
 	periodBody = Map();
 	periodBody.put("JSONString", periodData);
@@ -487,9 +501,9 @@ for each index idx in periodDummy
 	}
 
 	// --- Advance to next period ---
-	// Next opening: closing clamped to 0 if ≤ 0 (Excel ≤0 guard; no last-line force-zero plug)
+	// Next working opening = unrounded closing; Excel ≤0 → 0 guard. Do not assign opening = round(closing).
 	opening = closing;
-	if(opening < 0)
+	if(opening <= 0)
 	{
 		opening = 0.0;
 	}

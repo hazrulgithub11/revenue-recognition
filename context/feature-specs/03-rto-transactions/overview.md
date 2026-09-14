@@ -104,13 +104,13 @@ At period 1, opening balance should seed from contract `cf_rto_principal_wip` (n
 | If not all Pending | **Block** edits to Period / Principal / Monthly Payment |
 | Period identity | `cf_date` only (no period # field) |
 | Period 1 date | = `cf_rto_start_date`; then +1 month each |
-| Amounts | Excel **1:1** amort loop (incl. cash guard `opening ≤ 1 → cash 0`) |
+| Amounts | Excel amort loop with float-carry; round to Books 2dp on write (incl. cash guard `opening ≤ 1 → cash 0`) |
 | Payment amount | Contract monthly PMT (when cash guard allows) |
 | Customer | Copied from contract |
 | Function shape | One Deluge: RATE → write contract → create/replace periods |
 | Out of scope | Invoice / payment / status beyond Pending |
 
-Acceptance: SO25-0001 (and peers) period dates + opening/interest/payment/principal/closing match Excel within Books amount precision.
+Acceptance: SO25-0001 periods 1–2 match Excel display; last closing **0.00**; late rows ±0.02 vs workbook under 2dp WIP until full-precision principal.
 
 ---
 

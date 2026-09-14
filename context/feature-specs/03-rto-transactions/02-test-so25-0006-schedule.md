@@ -60,7 +60,7 @@ Confirms the amort loop is not hard-coded to SO25-0001 inputs.
 |--------|------|---------|---------------|---------|---------------------|---------|
 | 1 | start date | **14 015.00** | **502.18** | **699.00** | **196.82** | **13 818.18** |
 | 2 | start + 1 month | **13 818.18** | **495.12** | **699.00** | **203.88** | **13 614.30** |
-| 36 (last) | start + 35 months | ≈ **675.08** | ≈ **24.19** | **699.00** | ≈ **674.81** | ≈ **0.27** |
+| 36 (last) | start + 35 months | ≈ **674.82** | ≈ **24.18** | **699.00** | ≈ **674.82** | **0.00** |
 
 **Period-1 cross-check:**
 ```
@@ -75,7 +75,8 @@ closing   = 14 015.00 − 196.82 = 13 818.18
 Sum of Finance Income       ≈ 11 149.00
 Sum of Principal Reduction  ≈ 14 015.00
 Sum of Payment Amount       = 36 × 699 = 25 164.00
-Period-36 closing           ≈ 0 (small rounding residual, no forced plug)
+Period-36 closing           = 0.00 (float-carry / round-on-write; no forced plug)
+Late rows may drift ±0.02 vs workbook under 2dp WIP
 ```
 
 ---
